@@ -6,8 +6,15 @@ output: html_document
 editor_options: 
   chunk_output_type: console
 ---
-# Heat wave temperature data
-Compile and summarize air and water temperature data focused around the June 2021 heat wave. 
+# Analytical code for Raymond et al. Ecology
+List of Authors: Wendel W. Raymond, Julie S. Barber, Megan N. Dethier, Hilary A. Hayford, Christopher D.G. Harley, Teri L. King, Blair Paul, Camille A. Speck, Elizabeth D. Tobin, Ann E.T. Raymond, P. Sean McDonald
+
+Title: Assessment of the impacts of an unprecedented heatwave on intertidal shellfish of the Salish Sea
+
+Journal: Ecology 
+
+## Heat wave temperature data
+The code presented here queries and processes temperature and water level data from online databases and static .csv files included in this repository. 
 
 ```{r libraries}
 library(noaaoceans)
@@ -17,15 +24,16 @@ library(lubridate)
 library(rnoaa)
 library(daymetr)
 library(heatwaveR)
+library(tiff)
 
 theme_set(theme_classic())
 ```
 
 
-## Load Data
-Import NOAA and logger data as applicable.
+### Load Data
+Import NOAA and weather station data as applicable.
 
-```{r}
+```{r load data}
 ## Air Temp ##
 
 # NOAA Air temp data from Toke Point, Port Townsend #
@@ -108,7 +116,7 @@ colnames(van.tide) <- c("station", "t", "v", "station.name")
 ### Load Gridded climate data
 Pull from Daymet 2 X 2 degree surface grid. https://daymet.ornl.gov/getdata
 
-```{r}
+```{r gridded}
 ## Olympia ##
 oly.grid <- download_daymet(site = "olympia", lat = 47.064316, lon = -122.910577, start = 1991, end = 2020, internal = TRUE)
 
@@ -126,11 +134,10 @@ cvi.grid <- download_daymet(site = "calvert_island", lat = 51.6271, lon = -127.6
 
 ```
 
-## Data managment
-### Station
-clean up and put data sets together all nice like
-
-```{r}
+### Data managment
+#### Stations
+clean up for naming and format consistency
+```{r mgmt stations}
 station_names <- data.frame(station = c("9440910", "9444900", "9443090", "9446807"),
                             station.name = c("Toke Point", "Port Townsend", "Neah Bay", "Budd Inlet"))
 ## Air Temperature ##
@@ -169,10 +176,6 @@ air.temp.redu$station.name.f <- factor(air.temp.redu$station.name, levels = c("P
 water.level <- water.level %>% 
   mutate(v = as.numeric(v), t = as.POSIXct(t))
 
-# Convert to MLLW #
-#van.tide$v <- van.tide$v - 1.22
-#cal.tide$v <- cal.tide$v - 1.01
-
 # Make usable dataframe #
 water.level <- merge(water.level, station_names)
 water.level <- water.level[, c(1, 3, 4, 2)]
@@ -192,10 +195,10 @@ water.level.redu$station.name <- ifelse(water.level.redu$station.name == "VANCOU
 water.level.redu$station.name.f <- factor(water.level.redu$station.name, levels = c("Pruth Bay", "Vancouver", "Neah Bay", "Port Townsend", "Toke Point", "Budd Inlet"))
 ```
 
-### Exposure times
-Extract times at each location where water was <= 1m. Will need to convert Canadian to MLLW.
+#### Exposure times
+Extract times at each location where water was <= 1m. Will need to convert Canadian data (Vancouver and Pruth Bay) to MLLW.
 
-```{r}
+```{r mgmt exposure}
 water.level.exp <- water.level.redu
 water.level.exp$v <- ifelse(water.level.exp$station.name == "Pruth Bay", water.level.exp$v - 1.01, water.level.exp$v)
 water.level.exp$v <- ifelse(water.level.exp$station.name == "Vancouver", water.level.exp$v - 1.22, water.level.exp$v)
@@ -243,8 +246,9 @@ water.level.exp[18, 3] <- as.POSIXct("2021-06-28 12:16:00")
 water.level.exp[18, 4] <- as.POSIXct("2021-06-28 17:54:00")
 ```
 
-### Gridded
-```{r}
+#### Gridded
+Clean up raw temperature data from Daymet gridded surface temperature query.
+```{r mgmt gridded}
 ## Extract data ##
 # Olympia #
 oly.grid <- oly.grid$data
@@ -305,11 +309,42 @@ summer.grid.summary$station.name.f <- factor(summer.grid.summary$loc, levels = c
 air.temp.redu.t <- merge(air.temp.redu, summer.grid.summary, by = "station.name.f", all.x = TRUE)
 ```
 
-## Plots
-### Water Levels and Air Temp
+### Plots
+#### Water Levels and Air Temp
 ```{r}
-## Faceted plots ##
-# Water levels #
+## Air Temperature ##
+# Figure 3 #
+ylab <- "Air temperature (°C)"
+tiff("Figure3_AirTemp_Exposure_AllRegions.tif", height = 5600, width = 6300, units = "px", res = 800, compression = "lzw")
+ggplot(air.temp.redu.t) +
+  geom_line(aes(x = as.POSIXct(t), y = v), color = "#EB330E", size = 0.75) +
+  geom_flame(aes(x = as.POSIXct(t), y = v, y2 = (avg.max + 2*sd.max))) +
+  geom_vline(xintercept = as.POSIXct("2021-06-26 13:15:00"), linetype = "dashed") +
+  geom_vline(xintercept = as.POSIXct("2021-06-27 13:15:00"), linetype = "dashed") +
+  geom_vline(xintercept = as.POSIXct("2021-06-28 13:15:00"), linetype = "dashed") +
+  annotate("rect", xmin = as.POSIXct("2021-06-24 00:00:00"), xmax = as.POSIXct("2021-06-24 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-24 21:11:00"), xmax = as.POSIXct("2021-06-25 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-25 21:11:00"), xmax = as.POSIXct("2021-06-26 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-26 21:11:00"), xmax = as.POSIXct("2021-06-27 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-27 21:11:00"), xmax = as.POSIXct("2021-06-28 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-28 21:11:00"), xmax = as.POSIXct("2021-06-29 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-29 21:11:00"), xmax = as.POSIXct("2021-06-30 05:12:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  annotate("rect", xmin = as.POSIXct("2021-06-30 21:11:00"), xmax = as.POSIXct("2021-07-01 00:00:00"), ymin = 0, ymax = 45, alpha = 0.1, fill = "black") +
+  scale_y_continuous(limits = c(0, 45), breaks = seq(0, 45, by = 5)) +
+  scale_x_datetime(breaks = seq(as.POSIXct("2021-06-24 00:00:00"), as.POSIXct("2021-07-01 00:00:00"), "1 day"), date_labels = "%d-%m", limits = c(as.POSIXct("2021-06-24 00:00:00"), as.POSIXct("2021-07-01 00:00:00"))) +
+  xlab("Date") +
+  ylab(ylab) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(.~station.name.f, nrow = 2, ncol = 3) +
+  geom_hline(data = summer.grid.summary[, c(2, 3, 14)], aes(yintercept = avg.max), color = "#FFA703", size = 0.75) +
+  geom_hline(data = summer.grid.summary[, c(5, 6, 14)], aes(yintercept = avg.min), color = "#03BCFF", size = 0.75) +
+  geom_segment(data = water.level.exp, aes(y = 0, x = start, yend = 0, xend = end), color = "#EBD000", size = 3)
+dev.off()
+
+## Water levels ## 
+# Figure S1 #
+tiff("FigureS1_WaterLevels_AllRegions.tif", height = 5600, width = 3000, units = "px", res = 800, compression = "lzw")
 ggplot(water.level.redu) +
   geom_line(aes(x = as.POSIXct(t), y = v), color = "#2B09D9", size = 0.75) +
   geom_vline(xintercept = as.POSIXct("2021-06-26 13:15:00"), linetype = "dashed") +
@@ -330,80 +365,5 @@ ggplot(water.level.redu) +
   theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   facet_wrap(~station.name.f, nrow = 6, ncol = 1)
-
-ggplot(water.level.redu) +
-  geom_line(aes(x = as.POSIXct(t), y = v), color = "#2B09D9", size = 0.75) +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 0:00:00"), xmax = as.POSIXct("2021-06-26 05:12:00"), ymin = -1, ymax = 5, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 21:11:00"), xmax = as.POSIXct("2021-06-27 05:12:00"), ymin = -1, ymax = 5, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-27 21:11:00"), xmax = as.POSIXct("2021-06-28 05:12:00"), ymin = -1, ymax = 5, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-28 21:11:00"), xmax = as.POSIXct("2021-06-29 00:00:00"), ymin = -1, ymax = 5, alpha = 0.1, fill = "black") +
-  scale_y_continuous(limits = c(-1.5, 5), breaks = seq(-1, 5, by = 1)) +
-  scale_x_datetime(breaks = seq(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"), "1 day"), date_labels = "%D", limits = c(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"))) +
-  xlab("Date") +
-  ylab("Water level (m)") +
-  theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.text.y = element_text(size = 20)) +
-  facet_wrap(~station.name.f, nrow = 3, ncol = 2)
-
-# Air Temperature #
-ylab <- "Air temperature (°C)"
-ggplot(air.temp.redu.t) +
-  geom_line(aes(x = as.POSIXct(t), y = v), color = "#EB330E", size = 0.75) +
-  geom_flame(aes(x = as.POSIXct(t), y = v, y2 = (avg.max + 2*sd.max))) +
-  geom_vline(xintercept = as.POSIXct("2021-06-26 13:15:00"), linetype = "dashed") +
-  geom_vline(xintercept = as.POSIXct("2021-06-27 13:15:00"), linetype = "dashed") +
-  geom_vline(xintercept = as.POSIXct("2021-06-28 13:15:00"), linetype = "dashed") +
-  annotate("rect", xmin = as.POSIXct("2021-06-24 00:00:00"), xmax = as.POSIXct("2021-06-24 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-24 21:11:00"), xmax = as.POSIXct("2021-06-25 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-25 21:11:00"), xmax = as.POSIXct("2021-06-26 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 21:11:00"), xmax = as.POSIXct("2021-06-27 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-27 21:11:00"), xmax = as.POSIXct("2021-06-28 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-28 21:11:00"), xmax = as.POSIXct("2021-06-29 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-29 21:11:00"), xmax = as.POSIXct("2021-06-30 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-30 21:11:00"), xmax = as.POSIXct("2021-07-01 00:00:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, by = 10)) +
-  scale_x_datetime(breaks = seq(as.POSIXct("2021-06-24 00:00:00"), as.POSIXct("2021-07-01 00:00:00"), "1 day"), date_labels = "%d-%m-%Y", limits = c(as.POSIXct("2021-06-24 00:00:00"), as.POSIXct("2021-07-01 00:00:00"))) +
-  xlab("Date") +
-  ylab(ylab) +
-  theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~station.name.f, nrow = 6, ncol = 1) +
-  geom_hline(data = summer.grid.summary[, c(2, 3, 14)], aes(yintercept = avg.max), color = "#FF6803", size = 0.5) +
-  geom_hline(data = summer.grid.summary[, c(5, 6, 14)], aes(yintercept = avg.min), color = "#03BCFF", size = 0.5) +
-  geom_segment(data = water.level.exp, aes(y = 0, x = start, yend = 0, xend = end), color = "#663300", size = 2)
-
-plot_grid(p.wl.facet, p.air.facet, nrow = 1, ncol = 2)
-
-ggplot(air.temp.redu) +
-  geom_line(aes(x = as.POSIXct(t), y = v), color = "#EB330E", size = 1) +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 0:00:00"), xmax = as.POSIXct("2021-06-26 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 21:11:00"), xmax = as.POSIXct("2021-06-27 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-27 21:11:00"), xmax = as.POSIXct("2021-06-28 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-28 21:11:00"), xmax = as.POSIXct("2021-06-29 00:00:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, by = 10)) +
-  scale_x_datetime(breaks = seq(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"), "1 day"), date_labels = "%D", limits = c(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"))) +
-  xlab("Date") +
-  ylab("Air temperature (C)") +
-  theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20), axis.text.y = element_text(size = 20)) +
-  facet_wrap(~station.name.f, nrow = 3, ncol = 2) +
-  geom_hline(data = summer.grid.summary[, c(2, 3, 14)], aes(yintercept = avg.max), color = "#FF6803", size = 0.5) +
-  geom_hline(data = summer.grid.summary[, c(5, 6, 14)], aes(yintercept = avg.min), color = "#03BCFF", size = 0.5)
-
-ggplot(air.temp.redu.t) +
-  geom_line(aes(x = as.POSIXct(t), y = v), color = "#EB330E", size = 1) +
-  geom_flame(aes(x = as.POSIXct(t), y = v, y2 = (avg.max + 2*sd.max))) +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 0:00:00"), xmax = as.POSIXct("2021-06-26 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-26 21:11:00"), xmax = as.POSIXct("2021-06-27 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-27 21:11:00"), xmax = as.POSIXct("2021-06-28 05:12:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  annotate("rect", xmin = as.POSIXct("2021-06-28 21:11:00"), xmax = as.POSIXct("2021-06-29 00:00:00"), ymin = 0, ymax = 50, alpha = 0.1, fill = "black") +
-  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, by = 10)) +
-  scale_x_datetime(breaks = seq(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"), "1 day"), date_labels = "%D", limits = c(as.POSIXct("2021-06-26 00:00:00"), as.POSIXct("2021-06-29 00:00:00"))) +
-  xlab("Date") +
-  ylab("Air temperature (C)") +
-  theme(legend.position = "none") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20), axis.text.y = element_text(size = 20)) +
-  facet_wrap(~station.name.f, nrow = 3, ncol = 2) +
-  geom_hline(data = summer.grid.summary[, c(2, 3, 14)], aes(yintercept = avg.max), color = "#FF6803", size = 0.5) +
-  geom_hline(data = summer.grid.summary[, c(5, 6, 14)], aes(yintercept = avg.min), color = "#03BCFF", size = 0.5)
+dev.off()
 ```
